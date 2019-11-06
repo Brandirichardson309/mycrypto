@@ -9,7 +9,7 @@ import styled from 'styled-components';
 
 import translate, { translateRaw } from 'translations';
 import { WhenQueryExists } from 'components/renderCbs';
-import { InlineErrorMsg, AccountDropdown } from 'v2/components';
+import { InlineErrorMsg, AccountDropdown, AssetDropdown } from 'v2/components';
 import {
   getNetworkById,
   getBaseAssetByNetwork,
@@ -50,7 +50,6 @@ import { RatesContext } from 'v2/services/RatesProvider';
 
 import TransactionFeeDisplay from 'v2/components/TransactionFlow/displays/TransactionFeeDisplay';
 import {
-  AssetDropdown,
   EthAddressField,
   GasLimitField,
   GasPriceField,
