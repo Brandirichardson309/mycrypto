@@ -1,0 +1,13 @@
+// Button overrides
+@import 'sass/variables';
+
+.dropdown {
+  .caret {
+    margin-left: $space-sm;
+  }
+}
+
+// If it's a span, we probably want it inline-block, not inline
+span.dropdown {
+  display: inline-block;
+}

@@ -1,0 +1,89 @@
+name: GitHub CI
+
+on:
+  pull_request:
+    branches:
+      - '*'
+  push:
+    branches:
+      - master
+
+jobs:
+  validate-and-test:
+    name: Validate and Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    # macOS-latest
+    env:
+      ELECTRON_CACHE: $HOME/.cache/electron
+      ELECTRON_BUILDER_CACHE: $HOME/.cache/electron-builder
+    steps:
+      - name: Retrieves project from the git branch
+        uses: actions/checkout@v1
+
+      - name: Read .nvmrc
+        run: echo "##[set-output name=NVMRC;]$(cat package.json | grep '\"node\":' | sed 's/^ *//;s/ *$//;s/\"node\":\ \"//;s/\",//' )"
+        id: nvm
+
+      - name: Setup node ${{ steps.nvm.outputs.NVMRC }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: '${{ steps.nvm.outputs.NVMRC }}'
+
+      - run: node --version; npm --version; yarn --version
+
+      - name: Cache node modules
+        id: cache
+        uses: actions/cache@v2
+        with:
+          path: node_modules
+          ## Check cache based on yarn.lock hashfile
+          key: ${{ runner.OS }}-build-${{ hashFiles('**/yarn.lock') }}
+
+      - name: Install Dependencies
+        ## If no cache is found, install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: yarn install --frozen-lockfile
+
+      - name: yarn validate
+        run: yarn validate
+
+      - name: yarn test:coverage
+        run: yarn test:coverage --maxWorkers=2
+
+      - name: CodeCov
+        uses: codecov/codecov-action@v1
+
+  standalone-build:
+    name: Standalone Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Retrieves project from the git branch
+        uses: actions/checkout@v1
+
+      - name: Retrieve node version from .nvmrc
+        run: echo "##[set-output name=NVMRC;]$(cat package.json | grep '\"node\":' | sed 's/^ *//;s/ *$//;s/\"node\":\ \"//;s/\",//')"
+        id: nvm
+
+      - name: Setup node ${{ steps.nvm.outputs.NVMRC }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: '${{ steps.nvm.outputs.NVMRC }}'
+
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: yarn build
+        run: yarn build
+
+      - name: Zip standalone build folder
+        run: zip -r dist/web/standalone_mycrypto.zip dist/web/
+
+      - name: 'Save standalone_mycrypto.zip to artifacts'
+        uses: actions/upload-artifact@v1
+        with:
+          name: 'standalone_mycrypto'
+          path: 'dist/web/standalone_mycrypto.zip'

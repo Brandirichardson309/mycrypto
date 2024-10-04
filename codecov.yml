@@ -1,0 +1,11 @@
+coverage:
+  round: down
+  precision: 2
+  status:
+    patch:
+      default:
+        threshold: 10%
+        target: auto
+        base: auto
+ignore:
+  - '**/analytics.middleware.ts'

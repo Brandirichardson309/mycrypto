@@ -3,81 +3,49 @@ const path = require('path');
 
 const paths = {
   root: path.join(__dirname, '../'),
-  src: path.join(__dirname, '../common'),
+  src: path.join(__dirname, '../src'),
+  vendor: path.join(__dirname, '../src/vendor'),
   output: path.join(__dirname, '../dist'),
-  assets: path.join(__dirname, '../common/assets'),
+  assets: path.join(__dirname, '../src/assets'),
   static: path.join(__dirname, '../static'),
-  electron: path.join(__dirname, '../electron-app'),
   shared: path.join(__dirname, '../shared'),
-  modules: path.join(__dirname, '../node_modules')
+  modules: path.join(__dirname, '../node_modules'),
+  testConfig: path.join(__dirname, '../jest_config')
 };
 
 module.exports = {
   // Configuration
   port: 3000,
-  title: 'MyCrypto',
+  title: 'MyCrypto - Ethereum Wallet Manager',
   // description < 200 characters
-  description: 'MyCrypto is a free, open-source interface for interacting with the blockchain.',
-  url: 'https://mycrypto.com/',
+  description:
+    'Securely manage ALL of your crypto accounts with MyCrypto. Swap, send, and buy crypto with your favorite wallets like Ledger, MetaMask, and Trezor.',
+  url: 'https://app.mycrypto.com/',
   type: 'website',
   // img < 5MB
-  img: path.join(paths.assets, 'images/link-preview.png'),
+  // image needs to be an absolute URL
+  img: 'https://app.mycrypto.com/link-preview.png',
   twitter: {
     creator: '@MyCrypto'
   },
   path: paths,
 
-  // Typescript rule config
-  typescriptRule: {
-    test: /\.(ts|tsx)$/,
-    include: [paths.src, paths.shared, paths.electron],
-    use: [{ loader: 'ts-loader', options: { happyPackMode: true, logLevel: 'info' } }],
-    exclude: ['assets', 'sass', 'vendor', 'translations/lang']
-      .map(dir => path.resolve(paths.src, dir))
-      .concat([paths.modules])
-  },
-
-  // File resolution
-  resolve: {
-    extensions: ['.ts', '.tsx', '.js', '.css', '.json', '.scss'],
-    modules: [paths.src, paths.modules, paths.root],
-    alias: {
-      modernizr$: path.resolve(__dirname, '../.modernizrrc.js')
-    }
-  },
-
-  // Vendor modules
-  vendorModules: [
-    'bip39',
-    'bn.js',
-    'classnames',
-    'ethereum-blockies-base64',
-    'ethereumjs-abi',
-    'ethereumjs-tx',
-    'ethereumjs-util',
-    'ethereumjs-wallet',
-    'hdkey',
-    'idna-uts46',
-    'jsonschema',
-    'lodash',
-    'moment',
-    'normalizr',
-    'qrcode',
-    'qrcode.react',
-    'query-string',
-    'react',
-    'react-dom',
-    'react-markdown',
-    'react-redux',
-    'react-router-dom',
-    'react-router-redux',
-    'react-transition-group',
-    'redux',
-    'redux-logger',
-    'redux-saga',
-    'scryptsy',
-    'uuid',
-    'wallet-address-validator',
-    'whatwg-fetch'
-  ]
+  // Split vendor modules into seperate chunks for better caching.
+  // 1. Multiple chunks are better than a single one. ie. The gain in caching outweighs
+  //    the cost of multiple files.
+  //    https://medium.com/hackernoon/the-100-correct-way-to-split-your-chunks-with-webpack-f8a9df5b7758
+  // 2. Separate pattern for cacheGroups:
+  //    https://stackoverflow.com/questions/48985780/webpack-4-create-vendor-chunk
+  chunks: {
+    individual: [
+      'ethers',
+      'recharts',
+      '@walletconnect',
+      '@ledgerhq',
+      '@unstoppabledomains',
+      'graphql',
+      'apollo-client'
+    ],
+    devOnly: []
+  }
 };

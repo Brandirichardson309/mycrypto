@@ -1,19 +1,23 @@
-const path = require('path');
-const HtmlWebpackPlugin = require('html-webpack-plugin');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
+const FaviconsWebpackPlugin = require('favicons-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
-const IgnoreNotFoundExportPlugin = require('ignore-not-found-export-webpack-plugin');
-const config = require('./config');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const LodashModuleReplacementPlugin = require('lodash-webpack-plugin');
+const path = require('path');
+const StyleLintPlugin = require('stylelint-webpack-plugin');
+const TsconfigPathsPlugin = require('tsconfig-paths-webpack-plugin');
 
-const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production';
+const { IS_DEV } = require('../environment');
+const config = require('./config');
 
 module.exports = {
   target: 'web',
 
   entry: {
     badBrowserCheck: path.join(config.path.src, 'badBrowserCheck.ts'),
-    client: path.join(config.path.src, 'index.tsx')
+    metaMaskFirefox: path.join(config.path.vendor, 'inpage-metamask.js'),
+    main: path.join(config.path.src, 'index.tsx')
   },
 
   output: {
@@ -25,48 +29,104 @@ module.exports = {
 
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.css', '.json', '.scss'],
-    modules: [
-      config.path.src,
-      config.path.modules,
-      config.path.root
-    ],
+    modules: [config.path.src, 'node_modules'],
     alias: {
-      modernizr$: path.resolve(__dirname, '../.modernizrrc.js')
+      modernizr$: path.resolve(__dirname, '../.modernizrrc.js'),
+      '@fixtures': `${config.path.root}/jest_config/__fixtures__`,
+      // recharts 1.8.5 relies on core-js@2. Allow it to resolve to core-js@3
+      // https://github.com/recharts/recharts/issues/1673#issuecomment-499680671
+      'core-js/es6': 'core-js/es'
+    },
+    plugins: [new TsconfigPathsPlugin({ configFile: path.resolve(__dirname, '../tsconfig.json') })]
+  },
+
+  optimization: {
+    runtimeChunk: 'single',
+    splitChunks: {
+      cacheGroups: {
+        default: false,
+        vendors: false,
+        vendor: {
+          chunks: 'all',
+          name: 'vendor.bundle',
+          test(mod) {
+            const excluded = `${config.chunks.individual.join('|')}|${config.chunks.devOnly
+              .join('|')
+              .replace(/\//, '[\\\\/]')}`;
+            const excludeNodeModules = new RegExp(`[\\\\/]node_modules[\\\\/]((${excluded}).*)`);
+            const includeSrc = new RegExp(/[\\/]src[\\/]/);
+            const includeNodeModules = new RegExp(/node_modules/);
+            return (
+              mod.context &&
+              includeNodeModules.test(mod.context) &&
+              !excludeNodeModules.test(mod.context) &&
+              !includeSrc.test(mod.context)
+            );
+          },
+          reuseExistingChunk: true,
+          priority: 20
+        },
+        common: {
+          enforce: true,
+          chunks: 'all',
+          name: 'src.bundle',
+          minChunks: 2,
+          reuseExistingChunk: true,
+          priority: 10
+        },
+        vendorDev: {
+          enforce: true,
+          chunks: 'all',
+          name: 'vendor-dev',
+          test: new RegExp(
+            `[\\\\/]node_modules[\\\\/](${config.chunks.devOnly
+              .join('|')
+              .replace(/\//, '[\\\\/]')})[\\\\/]`
+          ),
+          priority: 40
+        }
+      }
     }
   },
 
   module: {
     rules: [
       /**
-       * TypeScript files
+       * TypeScript files without stories
        */
       {
-        test: /\.tsx?$/,
+        test: /(?!.*\.stories\.tsx?$).*\.tsx?$/,
         use: [
           {
             loader: 'babel-loader',
             options: {
               cacheDirectory: true,
               cacheCompression: false,
+              // allow lodash-webpack-plugin to reduce lodash size.
+              // allow babel-plugin-recharts to reduce recharts size.
+              plugins: [
+                'lodash',
+                'recharts',
+                IS_DEV && require.resolve('react-refresh/babel')
+              ].filter(Boolean)
             }
           }
         ],
-        include: [
-          config.path.src,
-          config.path.shared,
-          config.path.electron
-        ],
-        exclude: /node_modules/,
+        include: [config.path.src, config.path.shared, config.path.testConfig],
+        exclude: [/node_modules/]
       },
+
+      /*
+       * Ignore stories files
+       */
+      { test: /\.stories\.tsx?$/, loader: 'ignore-loader' },
 
       /**
        * Workers
        */
       {
         test: /\.worker\.js$/,
-        use: [
-          'worker-loader'
-        ]
+        use: ['worker-loader']
       },
 
       /**
@@ -80,7 +140,7 @@ module.exports = {
             options: {
               hash: 'sha512',
               digest: 'hex',
-              name: 'common/assets/[name].[contenthash].[ext]'
+              name: 'src/assets/[name].[contenthash].[ext]'
             }
           },
           {
@@ -112,10 +172,7 @@ module.exports = {
             }
           }
         ],
-        include: [
-          config.path.assets,
-          config.path.modules
-        ]
+        include: [config.path.assets, config.path.modules]
       },
 
       /**
@@ -127,14 +184,11 @@ module.exports = {
           {
             loader: 'file-loader',
             options: {
-              name: 'common/assets/[name].[contenthash].[ext]'
+              name: 'src/assets/[name].[contenthash].[ext]'
             }
           }
         ],
-        include: [
-          config.path.assets,
-          config.path.modules
-        ]
+        include: [config.path.assets, config.path.modules]
       },
 
       /**
@@ -151,6 +205,24 @@ module.exports = {
   plugins: [
     new CleanWebpackPlugin(),
 
+    new StyleLintPlugin({
+      files: '**/*.tsx',
+      lintDirtyModulesOnly: true,
+      quiet: true
+    }),
+
+    new FaviconsWebpackPlugin({
+      logo: path.resolve(config.path.assets, 'images/favicon.png'),
+      cacheDirectory: false, // Cache makes builds nondeterministic
+      inject: true,
+      prefix: 'src/assets/meta-[hash]',
+      favicons: {
+        appDescription: 'Ethereum Wallet Manager',
+        display: 'standalone',
+        theme_color: '#007896'
+      }
+    }),
+
     new HtmlWebpackPlugin({
       template: path.resolve(config.path.src, 'index.html'),
       inject: true,
@@ -163,9 +235,9 @@ module.exports = {
         site: config.twitter.creator,
         creator: config.twitter.creator
       },
-      metaCsp: IS_DEVELOPMENT
+      metaCsp: IS_DEV
         ? ''
-        : "default-src 'none'; script-src 'self'; worker-src 'self' blob:; child-src 'self'; style-src 'self' 'unsafe-inline'; manifest-src 'self'; font-src 'self'; img-src 'self' data: https://cdn.mycryptoapi.com/; connect-src *; frame-src 'self' https://connect.trezor.io;"
+        : `default-src 'none'; script-src 'self'; worker-src 'self' blob:; child-src 'self'; style-src 'self' 'unsafe-inline'; manifest-src 'self'; font-src 'self'; img-src 'self' data: https://mycryptoapi.com/api/v1/images/; connect-src *; frame-src 'self' https://connect.trezor.io https://landing.mycryptobuilds.com https://app.mycrypto.com;`
     }),
 
     new CopyWebpackPlugin([
@@ -175,14 +247,11 @@ module.exports = {
 
     new ForkTsCheckerWebpackPlugin({
       tsconfig: path.join(config.path.root, 'tsconfig.json'),
-      tslint: path.join(config.path.root, 'tslint.json'),
-      reportFiles: [
-        '**/*.{ts,tsx}',
-        '!node_modules/**/*'
-      ]
+      reportFiles: ['**/*.{ts,tsx}', '!node_modules/**/*']
     }),
 
-    new IgnoreNotFoundExportPlugin()
+    // Allow tree shaking for lodash
+    new LodashModuleReplacementPlugin({ flattening: true })
   ],
 
   stats: {
@@ -194,7 +263,7 @@ module.exports = {
   },
 
   performance: {
-    hints: false
+    hints: 'warning'
   },
 
   externals: [
